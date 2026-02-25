@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expense Tracker</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <h1 class="title">Expense Tracker</h1>
+
+    <!-- Action Cards -->
+    <div class="cards">
+      <div class="card clickable" id="add-expense-card">
+        <div class="icon">➕</div>
+        <h2>Add Expense</h2>
+        <p>Create a new expense</p>
+      </div>
+
+      <div class="card clickable" id="track-expense-card">
+        <div class="icon">📊</div>
+        <h2>Track Expenses</h2>
+        <p>View & analyze spending</p>
+      </div>
+    </div>
+
+    <!-- Add Expense Modal -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Add Expense</h2>
+
+        <form id="expense-form">
+          <input type="number" id="amount" placeholder="Amount (₹)" required />
+          <input type="text" id="category" placeholder="Category" required />
+          <input type="date" id="date" required />
+          <textarea id="description" placeholder="Description"></textarea>
+
+          <div class="actions">
+            <button type="submit">Save</button>
+            <button type="button" id="close-modal">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
