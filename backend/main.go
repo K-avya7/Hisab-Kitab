@@ -16,15 +16,19 @@ func main() {
 	}
 
 	http.HandleFunc("/api/expenses", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
 			expenseHandler.AddExpense(w, r)
-			return
-		}
-		if r.Method == http.MethodGet {
+
+		case http.MethodGet:
 			expenseHandler.ListExpenses(w, r)
-			return
+
+		case http.MethodDelete:
+			expenseHandler.DeleteExpense(w, r)
+
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
 
 	log.Println("Backend running on http://localhost:8080")

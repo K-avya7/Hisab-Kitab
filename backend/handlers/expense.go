@@ -60,7 +60,7 @@ func (h *ExpenseHandler) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.DB.Query(`
-		SELECT amount, category, description, expense_date
+		SELECT id, amount, category, description, expense_date
 		FROM expenses
 		ORDER BY expense_date DESC
 	`)
@@ -71,6 +71,7 @@ func (h *ExpenseHandler) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type Expense struct {
+		ID          string `json:"id"`
 		Amount      int    `json:"amount"`
 		Category    string `json:"category"`
 		Description string `json:"description"`
@@ -81,7 +82,7 @@ func (h *ExpenseHandler) ListExpenses(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var e Expense
-		if err := rows.Scan(&e.Amount, &e.Category, &e.Description, &e.Date); err != nil {
+		if err := rows.Scan(&e.ID, &e.Amount, &e.Category, &e.Description, &e.Date); err != nil {
 			http.Error(w, "failed to read expenses", http.StatusInternalServerError)
 			return
 		}
@@ -90,4 +91,31 @@ func (h *ExpenseHandler) ListExpenses(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(expenses)
+}
+// DeleteExpense handles the deletion of an expense by its ID.
+func (h *ExpenseHandler) DeleteExpense(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.DB.Exec(`DELETE FROM expenses WHERE id = ?`, id)
+	if err != nil {
+		http.Error(w, "failed to delete expense", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "expense not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
