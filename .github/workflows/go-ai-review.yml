@@ -1,0 +1,62 @@
+name: Go AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install GitHub CLI
+        run: sudo apt-get install gh -y
+
+      - name: Get PR diff
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} > diff.txt
+
+      - name: Create prompt
+        run: |
+          cat <<EOF > prompt.json
+          {
+            "model": "gpt-4.1",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a senior Go engineer. Return JSON only."
+              },
+              {
+                "role": "user",
+                "content": "Review this Go PR.\n\nDIFF:\n$(cat diff.txt)\n\nReturn JSON with summary and issues."
+              }
+            ]
+          }
+          EOF
+
+      - name: Call AI
+        run: |
+          curl https://models.github.ai/inference \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d @prompt.json > response.json
+
+      - name: Extract response
+        run: |
+          cat response.json | jq -r '.choices[0].message.content' > review.txt
+
+      - name: Post comment
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body-file review.txt
