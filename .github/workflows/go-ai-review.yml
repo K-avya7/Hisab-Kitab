@@ -33,21 +33,21 @@ jobs:
         run: |
           DIFF_CONTENT=$(jq -Rs . < diff.txt)
 
-          cat <<EOF > prompt.json
-          {
-            "model": "gpt-4.1",
-            "messages": [
-              {
-                "role": "system",
-                "content": "You are a senior Go engineer. Return JSON only."
-              },
-              {
-                "role": "user",
-                "content": "Review this Go PR.\n\nDIFF:\n" + $DIFF_CONTENT + "\n\nReturn JSON with summary and issues."
-              }
-            ]
-          }
-          EOF
+          jq -n \
+            --arg diff "$DIFF_CONTENT" \
+            '{
+              model: "gpt-4.1",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a senior Go engineer. Return JSON only."
+                },
+                {
+                  role: "user",
+                  content: ("Review this Go PR.\n\nDIFF:\n" + $diff + "\n\nReturn JSON with summary and issues.")
+                }
+              ]
+            }' > prompt.json
 
       - name: Call AI
         run: |
