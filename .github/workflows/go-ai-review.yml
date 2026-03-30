@@ -22,14 +22,16 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Install GitHub CLI
-        run: sudo apt-get install gh -y
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh jq
 
       - name: Get PR diff
         run: |
           gh pr diff ${{ github.event.pull_request.number }} > diff.txt
 
-      - name: Create prompt
+      - name: Create prompt (safe JSON)
         run: |
           DIFF_CONTENT=$(jq -Rs . < diff.txt)
 
@@ -40,7 +42,7 @@ jobs:
               messages: [
                 {
                   role: "system",
-                  content: "You are a senior Go engineer. Return JSON only."
+                  content: "You are a senior Go engineer. Return STRICT JSON only."
                 },
                 {
                   role: "user",
@@ -49,16 +51,18 @@ jobs:
               ]
             }' > prompt.json
 
+      - name: Debug prompt (optional but useful)
+        run: cat prompt.json
+
       - name: Call AI
         run: |
-          curl https://models.github.ai/inference \
-            -H "Authorization: Bearer ${{ github.token }}"" \
+          curl -sS -X POST https://models.github.ai/inference \
+            -H "Authorization: Bearer ${{ github.token }}" \
             -H "Content-Type: application/json" \
             -d @prompt.json > response.json
+
       - name: Debug AI response
         run: cat response.json
-      - name: Install jq
-        run: sudo apt-get install jq -y
 
       - name: Extract response
         run: |
