@@ -10,6 +10,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout repo
@@ -29,6 +31,8 @@ jobs:
 
       - name: Create prompt
         run: |
+          DIFF_CONTENT=$(jq -Rs . < diff.txt)
+
           cat <<EOF > prompt.json
           {
             "model": "gpt-4.1",
@@ -39,7 +43,7 @@ jobs:
               },
               {
                 "role": "user",
-                "content": "Review this Go PR.\n\nDIFF:\n$(cat diff.txt)\n\nReturn JSON with summary and issues."
+                "content": "Review this Go PR.\n\nDIFF:\n" + $DIFF_CONTENT + "\n\nReturn JSON with summary and issues."
               }
             ]
           }
@@ -48,13 +52,17 @@ jobs:
       - name: Call AI
         run: |
           curl https://models.github.ai/inference \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: Bearer ${{ github.token }}"" \
             -H "Content-Type: application/json" \
             -d @prompt.json > response.json
+      - name: Debug AI response
+        run: cat response.json
+      - name: Install jq
+        run: sudo apt-get install jq -y
 
       - name: Extract response
         run: |
-          cat response.json | jq -r '.choices[0].message.content' > review.txt
+          jq -r '.choices[0].message.content // "AI response parsing failed"' response.json > review.txt
 
       - name: Post comment
         run: |
