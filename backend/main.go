@@ -28,5 +28,7 @@ func main() {
 	})
 
 	log.Println("Backend running on http://localhost:8080")
+	log.Println("testing the new github workflow for ai agent review")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+
 }
