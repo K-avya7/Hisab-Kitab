@@ -1,4 +1,4 @@
-name: AI Review (Basic)
+name: AI Review (Basic-Updated)
 
 on:
   pull_request:
@@ -30,7 +30,7 @@ jobs:
           jq -n \
             --arg diff "$DIFF" \
             '{
-              model: "gpt-5",
+              model: "openai/gpt-4.1",
               messages: [
                 {
                   role: "system",
