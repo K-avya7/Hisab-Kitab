@@ -8,6 +8,10 @@ import (
 	"expense-tracker/handlers"
 )
 
+func divide(a int, b int) int {
+	return a / b
+}
+
 func main() {
 	database := db.InitDB()
 
