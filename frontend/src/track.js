@@ -25,9 +25,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         <strong>${e.category}</strong>
         <div class="desc">${e.description || ''}</div>
       </div>
+
       <div class="right">
         ₹${(e.amount / 100).toFixed(2)}
         <div class="date">${e.date}</div>
+        <button class="delete-btn" data-id="${e.id}">Delete</button>
       </div>
     `;
 
