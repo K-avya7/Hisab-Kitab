@@ -1,4 +1,4 @@
-name: PR Diff Debug
+name: PR Diff Debug + AI Simulation
 
 on:
   pull_request:
@@ -15,9 +15,12 @@ jobs:
     steps:
       - name: Print PR info
         run: |
+          echo "===== PR INFO ====="
           echo "PR Number: ${{ github.event.pull_request.number }}"
-          echo "Base: ${{ github.event.pull_request.base.ref }}"
-          echo "Head: ${{ github.event.pull_request.head.ref }}"
+          echo "Base Branch: ${{ github.event.pull_request.base.ref }}"
+          echo "Head Branch: ${{ github.event.pull_request.head.ref }}"
+          echo "Author: ${{ github.event.pull_request.user.login }}"
+          echo "===================="
 
       - name: Get PR diff via GitHub API
         env:
@@ -26,17 +29,55 @@ jobs:
           gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }} \
             -H "Accept: application/vnd.github.v3.diff" > diff.txt
 
-      - name: Show diff stats
+      - name: Show diff preview
         run: |
-          echo "===== DIFF PREVIEW ====="
+          echo "===== DIFF PREVIEW (first 50 lines) ====="
           head -n 50 diff.txt
-          echo "========================"
+          echo "========================================="
 
-          echo "Lines in diff:"
+          echo "Total lines in diff:"
           wc -l diff.txt
 
-      - name: Upload diff artifact
+      - name: Build AI payload (simulation)
+        run: |
+          DIFF=$(jq -Rs . diff.txt)
+
+          jq -n \
+            --arg diff "$DIFF" \
+            '{
+              model: "gpt-4o",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a senior Go developer reviewing a pull request."
+                },
+                {
+                  role: "user",
+                  content: ("Review this PR diff and provide feedback:\n\n" + $diff)
+                }
+              ]
+            }' > payload.json
+
+          echo "===== AI PAYLOAD PREVIEW ====="
+          cat payload.json | head -n 40
+          echo "================================"
+
+      - name: Simulate AI call (safe)
+        run: |
+          echo "===== SIMULATED AI CALL ====="
+          echo "POST https://api.openai.com/v1/chat/completions"
+          echo "Headers:"
+          echo "  Authorization: Bearer ***"
+          echo "  Content-Type: application/json"
+          echo ""
+          echo "Payload size:"
+          wc -c payload.json
+          echo "================================"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pr-diff
-          path: diff.txt
+          name: pr-debug-data
+          path: |
+            diff.txt
+            payload.json
