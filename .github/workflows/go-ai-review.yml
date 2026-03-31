@@ -1,4 +1,4 @@
-name: AI Review (Basic-Updated)
+name: AI Review (OpenAI)
 
 on:
   pull_request:
@@ -30,7 +30,7 @@ jobs:
           jq -n \
             --arg diff "$DIFF" \
             '{
-              model: "openai/gpt-4.1",
+              model: "gpt-4o",
               messages: [
                 {
                   role: "system",
@@ -43,14 +43,14 @@ jobs:
               ]
             }' > payload.json
 
-      - name: Call model
+      - name: Call OpenAI API
         run: |
-          curl -s https://models.github.ai/inference/chat/completions \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          curl -s https://api.openai.com/v1/chat/completions \
+            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d @payload.json > response.json
 
-      - name: Debug response (important for now)
+      - name: Debug response
         run: |
           echo "===== MODEL RESPONSE ====="
           cat response.json
