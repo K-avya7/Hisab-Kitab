@@ -1,20 +1,23 @@
-name: AI Review (OpenAI)
+name: PR Diff Debug
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  review:
+  debug:
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Print PR info
+        run: |
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "Base: ${{ github.event.pull_request.base.ref }}"
+          echo "Head: ${{ github.event.pull_request.head.ref }}"
 
       - name: Get PR diff via GitHub API
         env:
@@ -23,44 +26,17 @@ jobs:
           gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }} \
             -H "Accept: application/vnd.github.v3.diff" > diff.txt
 
-      - name: Create payload
+      - name: Show diff stats
         run: |
-          DIFF=$(jq -Rs . diff.txt)
+          echo "===== DIFF PREVIEW ====="
+          head -n 50 diff.txt
+          echo "========================"
 
-          jq -n \
-            --arg diff "$DIFF" \
-            '{
-              model: "gpt-4o",
-              messages: [
-                {
-                  role: "system",
-                  content: "You are a senior Go developer reviewing code."
-                },
-                {
-                  role: "user",
-                  content: ("Review this PR diff and provide clear suggestions:\n\n" + $diff)
-                }
-              ]
-            }' > payload.json
+          echo "Lines in diff:"
+          wc -l diff.txt
 
-      - name: Call OpenAI API
-        run: |
-          curl -s https://api.openai.com/v1/chat/completions \
-            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d @payload.json > response.json
-
-      - name: Debug response
-        run: |
-          echo "===== MODEL RESPONSE ====="
-          cat response.json
-          echo "=========================="
-
-      - name: Post comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          COMMENT=$(jq -r '.choices[0].message.content // "No response from model"' response.json)
-
-          gh pr comment ${{ github.event.pull_request.number }} \
-            --body "$COMMENT"
+      - name: Upload diff artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-diff
+          path: diff.txt
