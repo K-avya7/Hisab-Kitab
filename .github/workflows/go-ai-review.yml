@@ -16,14 +16,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Get PR diff
+      - name: Get PR diff via GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git fetch origin main
-          git diff origin/main...HEAD > diff.txt
+          gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }} \
+            -H "Accept: application/vnd.github.v3.diff" > diff.txt
 
       - name: Create payload
         run: |
-          DIFF=$(cat diff.txt | jq -Rs .)
+          DIFF=$(jq -Rs . diff.txt)
 
           jq -n \
             --arg diff "$DIFF" \
@@ -36,7 +38,7 @@ jobs:
                 },
                 {
                   role: "user",
-                  content: ("Review this PR diff and give suggestions:\n\n" + $diff)
+                  content: ("Review this PR diff and provide clear suggestions:\n\n" + $diff)
                 }
               ]
             }' > payload.json
@@ -48,15 +50,17 @@ jobs:
             -H "Content-Type: application/json" \
             -d @payload.json > response.json
 
-      - name: Debug response
+      - name: Debug response (important for now)
         run: |
+          echo "===== MODEL RESPONSE ====="
           cat response.json
+          echo "=========================="
 
       - name: Post comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          COMMENT=$(jq -r '.choices[0].message.content // "No response"' response.json)
+          COMMENT=$(jq -r '.choices[0].message.content // "No response from model"' response.json)
 
           gh pr comment ${{ github.event.pull_request.number }} \
             --body "$COMMENT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
