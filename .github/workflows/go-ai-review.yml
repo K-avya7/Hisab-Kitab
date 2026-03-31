@@ -1,4 +1,4 @@
-name: Go AI Code Review
+name: AI Code Review
 
 on:
   pull_request:
@@ -7,68 +7,119 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       pull-requests: write
-    env:
-      GH_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      - name: Install dependencies
+      - name: Get PR files (with patches)
+        id: files
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gh jq
+          gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files > files.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get PR diff
+      - name: Process each file and call AI
         run: |
-          gh pr diff ${{ github.event.pull_request.number }} > diff.txt
+          echo "[]" > all_comments.json
+          SUMMARY=""
 
-      - name: Create prompt (safe JSON)
-        run: |
-          DIFF_CONTENT=$(jq -Rs . < diff.txt)
+          jq -c '.[]' files.json | while read file; do
+            FILENAME=$(echo $file | jq -r '.filename')
+            PATCH=$(echo $file | jq -r '.patch // empty')
 
-          jq -n \
-            --arg diff "$DIFF_CONTENT" \
-            '{
-              model: "gpt-4.1",
-              messages: [
+            if [ -z "$PATCH" ]; then
+              continue
+            fi
+
+            echo "Processing $FILENAME"
+
+            # Extract valid added line numbers
+            echo "$PATCH" > patch.txt
+
+            awk '
+              /^@@/ {
+                split($0, a, "+");
+                split(a[2], b, ",");
+                line=b[1];
+                next;
+              }
+              /^\+/ && !/^\+\+\+/ {
+                print line;
+                line++;
+                next;
+              }
+              !/^\-/ { line++; }
+            ' patch.txt > valid_lines.txt
+
+            VALID_LINES=$(cat valid_lines.txt | jq -R . | jq -s .)
+
+            PATCH_ESCAPED=$(cat patch.txt | jq -Rs .)
+
+            cat <<EOF > payload.json
+            {
+              "model": "gpt-5",
+              "messages": [
                 {
-                  role: "system",
-                  content: "You are a senior Go engineer. Return STRICT JSON only."
+                  "role": "system",
+                  "content": "You are a strict senior Go developer performing code reviews."
                 },
                 {
-                  role: "user",
-                  content: ("Review this Go PR.\n\nDIFF:\n" + $diff + "\n\nReturn JSON with summary and issues.")
+                  "role": "user",
+                  "content": "Review this Go file diff.\n\nRules:\n- Only comment on added lines\n- Follow idiomatic Go\n- Focus on bugs, performance, concurrency, error handling\n- Skip uncertain cases\n\nReturn STRICT JSON:\n[\n  {\n    \"line\": number,\n    \"severity\": \"critical|warning|suggestion\",\n    \"comment\": \"text\",\n    \"fix\": \"optional improved code\"\n  }\n]\n\nValid lines:\n$VALID_LINES\n\nDiff:\n$PATCH_ESCAPED"
                 }
               ]
-            }' > prompt.json
+            }
+            EOF
 
-      - name: Debug prompt (optional but useful)
-        run: cat prompt.json
+            curl https://models.github.ai/inference/chat/completions \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d @payload.json > response.json
 
-      - name: Call AI
-        run: |
-          curl -sS -X POST https://models.github.ai/inference \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            -H "Content-Type: application/json" \
-            -d @prompt.json > response.json
+            CONTENT=$(jq -r '.choices[0].message.content' response.json)
 
-      - name: Debug AI response
-        run: cat response.json
+            echo "$CONTENT" > ai_comments.json
 
-      - name: Extract response
-        run: |
-          jq -r '.choices[0].message.content // "AI response parsing failed"' response.json > review.txt
+            # Validate JSON (skip if invalid)
+            if ! jq empty ai_comments.json 2>/dev/null; then
+              echo "Invalid JSON from model, skipping $FILENAME"
+              continue
+            fi
 
-      - name: Post comment
+            jq -c '.[]' ai_comments.json | while read comment; do
+              LINE=$(echo $comment | jq -r '.line')
+              BODY=$(echo $comment | jq -r '.comment')
+              SEVERITY=$(echo $comment | jq -r '.severity')
+              FIX=$(echo $comment | jq -r '.fix // ""')
+
+              FULL_BODY="[$SEVERITY] $BODY"
+              if [ ! -z "$FIX" ]; then
+                FULL_BODY="$FULL_BODY\n\nSuggested Fix:\n\`\`\`go\n$FIX\n\`\`\`"
+              fi
+
+              gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
+                -f body="$FULL_BODY" \
+                -f path="$FILENAME" \
+                -F line=$LINE \
+                -f side=RIGHT
+
+              # Append to summary
+              SUMMARY="$SUMMARY\n- [$SEVERITY] $FILENAME:$LINE → $BODY"
+            done
+          done
+
+          echo -e "$SUMMARY" > summary.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post summary comment
         run: |
           gh pr comment ${{ github.event.pull_request.number }} \
-            --body-file review.txt
+            --body "## AI Code Review Summary\n$(cat summary.txt)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
